@@ -4,13 +4,13 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
-    "accelerate>=1.12.0",
+    "accelerate==0.34.2",
     "immutabledict>=4.3.1",
     "langdetect>=1.0.9",
-    "lm-eval[hf]>=0.4.11",
-    "torch>=2.10.0",
-    "transformers>=4.57.1,<5.0.0",
+    "lm-eval[hf]==0.4.11",
+    "torch==2.6.0",
+    "transformers==4.46.3",
 ]
 
 [project.optional-dependencies]
-cuda = ["bitsandbytes>=0.49.2"]
+cuda = ["bitsandbytes==0.43.3"]
