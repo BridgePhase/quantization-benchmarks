@@ -1,5 +1,6 @@
 """Parse lm-eval results and print a comparison table across quantization configs."""
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -131,7 +132,22 @@ def print_table(
     print()
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Compare benchmark quality and performance results across quant configs.",
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="meta-llama/Llama-3.2-3B",
+        help="Model ID label to display in table titles.",
+    )
+    return parser.parse_args()
+
+
 def main() -> None:
+    args = parse_args()
+
     if not RESULTS_DIR.is_dir():
         print(f"Error: Results directory '{RESULTS_DIR}' not found.")
         print("Run the benchmarks first: bash run_benchmarks.sh")
@@ -173,7 +189,7 @@ def main() -> None:
                 quality_metric_names.append(display_name)
 
         print_table(
-            "Llama-3.2-3B Quality Metrics",
+            f"{args.model} Quality Metrics",
             quality_metric_names,
             all_quality,
             config_names,
@@ -184,7 +200,7 @@ def main() -> None:
         perf_metric_names = [display_name for _, display_name in PERF_METRICS]
 
         print_table(
-            "Llama-3.2-3B Performance Metrics",
+            f"{args.model} Performance Metrics",
             perf_metric_names,
             all_perf,
             config_names,
