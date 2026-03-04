@@ -33,7 +33,7 @@ uv run huggingface-cli login
 
 ## Configuration
 
-`run_benchmarks.sh` has defaults at the top of the script:
+`run_benchmarks.py` has defaults near the top of the script:
 
 ```bash
 MODEL="meta-llama/Llama-3.2-3B"   # Any HuggingFace model ID
@@ -46,10 +46,16 @@ You can override either value at runtime via CLI flags:
 - `--model <huggingface-model-id>`
 - `--tasks <comma-separated-task-list>`
 - `--batch-size <size>` (defaults to `1`)
+- `--limit <n>` (optional; no limit by default)
 
 ## Usage
 
 ### Run benchmarks
+
+`run_benchmarks.sh` is a thin wrapper around `run_benchmarks.py`.
+
+Common benchmark CLI defaults/flags are shared internally via `benchmark_common.py`.
+For compatibility, helper scripts accept both hyphen and underscore variants for shared flags (for example `--batch-size` / `--batch_size`, `--output-path` / `--output_path`).
 
 ```bash
 # Auto-detect platform
@@ -69,6 +75,9 @@ bash run_benchmarks.sh cuda --batch-size 1
 
 # Skip performance benchmarks (quality-only)
 bash run_benchmarks.sh mps --skip-perf
+
+# Fast smoke test using only first 10 eval samples per task
+bash run_benchmarks.sh mps --skip-perf --tasks ifeval --batch-size 1 --limit 10
 ```
 
 This runs three configurations sequentially:
@@ -80,8 +89,25 @@ This runs three configurations sequentially:
 For each configuration, both a **quality benchmark** (lm-eval) and a **performance benchmark** (throughput/latency/VRAM) are run. Use `--skip-perf` to skip the performance benchmarks.
 
 Results are saved to `results/{bf16,int8,int4}/`. Each directory contains:
-- `results.json` — quality metrics from lm-eval
+- `results.json` (or lm-eval JSON variant) — quality metrics from the backend runner
 - `perf_results.json` — performance metrics (VRAM, throughput, latency)
+
+Each benchmark invocation also creates one run-level artifact:
+- `results/<YYYY-mm-dd-HH:MM:SS>-results.json`
+
+The run artifact is updated after each completed step and includes:
+- run metadata (`device`, `model`, `tasks`, `batch_size`, `include_performance_metrics`)
+- per-config quality payloads (`bf16`, `int8`, `int4`)
+- per-config performance payloads when performance benchmarks are enabled
+
+### What `--limit` does
+
+`--limit` passes through to lm-eval's sample limiter for quality evaluation. It caps how many examples are evaluated per task.
+
+- `--limit` is **not enabled by default** (full dataset/task split is used)
+- it speeds up quality runs significantly for debugging/smoke tests
+- it does **not** change the performance benchmark phase (`run_perf_benchmark.py`)
+- it should generally **not** be used for final quality comparisons, because smaller sample counts are noisier and less representative
 
 ### Run performance benchmarks standalone
 

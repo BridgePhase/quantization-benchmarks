@@ -1,13 +1,20 @@
 """Measure inference performance (VRAM, throughput, latency) for a quantized model."""
 
 import argparse
-import json
 import statistics
 import time
 from pathlib import Path
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from benchmark_common import (
+    add_device_arg,
+    add_model_arg,
+    add_output_path_arg,
+    model_output_dir,
+    write_json,
+)
 
 PROMPTS = [
     "The theory of general relativity describes",
@@ -22,12 +29,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Measure inference performance for a quantized model."
     )
-    parser.add_argument(
-        "--model",
-        type=str,
-        required=True,
-        help="HuggingFace model ID (e.g. meta-llama/Llama-3.2-3B)",
-    )
+    add_model_arg(parser, required=True)
     parser.add_argument(
         "--quant",
         type=str,
@@ -35,19 +37,8 @@ def parse_args() -> argparse.Namespace:
         choices=["bf16", "int8", "int4"],
         help="Quantization level",
     )
-    parser.add_argument(
-        "--device",
-        type=str,
-        required=True,
-        choices=["cuda", "mps"],
-        help="Device to run on",
-    )
-    parser.add_argument(
-        "--output-path",
-        type=str,
-        required=True,
-        help="Output directory (perf_results.json saved under <output-path>/<model>/)",
-    )
+    add_device_arg(parser, required=True, choices=["cuda", "mps"])
+    add_output_path_arg(parser, required=True)
     parser.add_argument(
         "--max-new-tokens",
         type=int,
@@ -106,9 +97,7 @@ def load_model(model_id: str, quant: str, device: str):
 def measure_vram(device: str) -> dict:
     vram = {}
     if device == "cuda":
-        vram["model_vram_mb"] = round(
-            torch.cuda.memory_allocated() / 1024 / 1024, 1
-        )
+        vram["model_vram_mb"] = round(torch.cuda.memory_allocated() / 1024 / 1024, 1)
     elif device == "mps":
         vram["model_vram_mb"] = round(
             torch.mps.current_allocated_memory() / 1024 / 1024, 1
@@ -186,46 +175,71 @@ def run_benchmark(
 def main() -> None:
     args = parse_args()
 
-    print(f"Loading {args.model} ({args.quant}) on {args.device}...")
-    model, tokenizer = load_model(args.model, args.quant, args.device)
+    run_performance_benchmark(
+        model_id=args.model,
+        quant=args.quant,
+        device=args.device,
+        output_path=args.output_path,
+        max_new_tokens=args.max_new_tokens,
+        warmup=args.warmup,
+        iterations=args.iterations,
+    )
+
+
+def run_performance_benchmark(
+    *,
+    model_id: str,
+    quant: str,
+    device: str,
+    output_path: str | Path,
+    max_new_tokens: int = 128,
+    warmup: int = 1,
+    iterations: int = 5,
+) -> tuple[Path, dict]:
+    print(f"Loading {model_id} ({quant}) on {device}...")
+    model, tokenizer = load_model(model_id, quant, device)
 
     # Measure VRAM after model load
-    vram_info = measure_vram(args.device)
+    vram_info = measure_vram(device)
     print(f"  Model VRAM: {vram_info.get('model_vram_mb', 'N/A')} MB")
 
-    print(f"Running performance benchmark ({args.iterations} iterations, "
-          f"{args.max_new_tokens} tokens each)...")
+    print(
+        f"Running performance benchmark ({iterations} iterations, "
+        f"{max_new_tokens} tokens each)..."
+    )
     perf_metrics = run_benchmark(
         model,
         tokenizer,
-        args.device,
-        args.max_new_tokens,
-        args.warmup,
-        args.iterations,
+        device,
+        max_new_tokens,
+        warmup,
+        iterations,
     )
 
     results = {
-        "model": args.model,
-        "quantization": args.quant,
-        "device": args.device,
-        "max_new_tokens": args.max_new_tokens,
-        "warmup_iterations": args.warmup,
-        "measurement_iterations": args.iterations,
+        "model": model_id,
+        "quantization": quant,
+        "device": device,
+        "max_new_tokens": max_new_tokens,
+        "warmup_iterations": warmup,
+        "measurement_iterations": iterations,
         **vram_info,
         **perf_metrics,
     }
 
     # Save to <output-path>/<model_name>/perf_results.json
-    output_dir = Path(args.output_path) / args.model.replace("/", "__")
+    output_dir = model_output_dir(output_path, model_id)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / "perf_results.json"
-    output_file.write_text(json.dumps(results, indent=2))
+    write_json(output_file, results)
     print(f"\nResults saved to {output_file}")
 
     # Print summary
     print("\n--- Performance Summary ---")
     for key, value in results.items():
         print(f"  {key}: {value}")
+
+    return output_file, results
 
 
 if __name__ == "__main__":
