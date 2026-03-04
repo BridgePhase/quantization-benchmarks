@@ -33,12 +33,17 @@ uv run huggingface-cli login
 
 ## Configuration
 
-Edit the variables at the top of `run_benchmarks.sh` to choose your model and tasks:
+`run_benchmarks.sh` has defaults at the top of the script:
 
 ```bash
 MODEL="meta-llama/Llama-3.2-3B"   # Any HuggingFace model ID
 TASKS="ifeval,hellaswag"           # Comma-separated lm-eval task names
 ```
+
+You can override either value at runtime via CLI flags:
+
+- `--model <huggingface-model-id>`
+- `--tasks <comma-separated-task-list>`
 
 ## Usage
 
@@ -51,6 +56,10 @@ bash run_benchmarks.sh
 # Or specify explicitly
 bash run_benchmarks.sh cuda
 bash run_benchmarks.sh mps
+
+# Override model and/or tasks
+bash run_benchmarks.sh mps --model "google/gemma-2-2b" --tasks "ifeval"
+bash run_benchmarks.sh cuda --tasks "hellaswag,ifeval"
 
 # Skip performance benchmarks (quality-only)
 bash run_benchmarks.sh mps --skip-perf
@@ -97,7 +106,7 @@ The default task configuration evaluates:
 - **HellaSwag**: `acc_norm` (normalized accuracy)
 - **IFEval**: `prompt_level_strict_acc`, `inst_level_strict_acc`, `prompt_level_loose_acc`, `inst_level_loose_acc`
 
-If you change `TASKS` in the benchmark script, update the `TASK_METRICS` dict in `compare_results.py` to match.
+If you use different tasks (via script defaults or `--tasks`), update the `TASK_METRICS` dict in `compare_results.py` to match.
 
 ### Performance metrics
 
