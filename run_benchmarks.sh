@@ -9,17 +9,45 @@ BATCH_SIZE="auto"
 PLATFORM=""
 SKIP_PERF=false
 
-for arg in "$@"; do
-  case "$arg" in
+while [ "$#" -gt 0 ]; do
+  case "$1" in
     --skip-perf)
       SKIP_PERF=true
+      shift
       ;;
     cuda|mps)
-      PLATFORM="$arg"
+      PLATFORM="$1"
+      shift
+      ;;
+    --model)
+      if [ "$#" -lt 2 ]; then
+        echo "Error: --model requires a value."
+        echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>]"
+        exit 1
+      fi
+      MODEL="$2"
+      shift 2
+      ;;
+    --model=*)
+      MODEL="${1#*=}"
+      shift
+      ;;
+    --tasks)
+      if [ "$#" -lt 2 ]; then
+        echo "Error: --tasks requires a value."
+        echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>]"
+        exit 1
+      fi
+      TASKS="$2"
+      shift 2
+      ;;
+    --tasks=*)
+      TASKS="${1#*=}"
+      shift
       ;;
     *)
-      echo "Error: Unknown argument '$arg'."
-      echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf]"
+      echo "Error: Unknown argument '$1'."
+      echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>]"
       exit 1
       ;;
   esac
@@ -34,7 +62,7 @@ if [ -z "$PLATFORM" ]; then
     PLATFORM="mps"
   else
     echo "Error: No supported GPU detected (checked CUDA and MPS)."
-    echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf]"
+    echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>]"
     exit 1
   fi
   echo "Detected platform: $PLATFORM"
@@ -42,7 +70,7 @@ fi
 
 if [ "$PLATFORM" != "cuda" ] && [ "$PLATFORM" != "mps" ]; then
   echo "Error: Invalid platform '$PLATFORM'. Must be 'cuda' or 'mps'."
-  echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf]"
+  echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>]"
   exit 1
 fi
 
@@ -62,7 +90,7 @@ elif [ "$PLATFORM" = "mps" ]; then
 fi
 
 echo "============================================"
-echo "  Llama-3.2-3B Quantization Benchmarks"
+echo "  Model Quantization Benchmarks"
 echo "============================================"
 echo ""
 echo "Model:     $MODEL"
@@ -74,8 +102,8 @@ else
   echo "Perf:      enabled"
 fi
 echo ""
-echo "REMINDER: You must have accepted the Llama 3.2 license on"
-echo "huggingface.co and logged in via: uv run huggingface-cli login"
+echo "REMINDER: If your selected model is gated, accept its license on"
+echo "huggingface.co and log in via: uv run huggingface-cli login"
 echo ""
 
 # --- FP16/BF16 (baseline) ---
