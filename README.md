@@ -2,7 +2,7 @@
 
 Compare any HuggingFace model at full precision (BF16) vs 8-bit and 4-bit quantization using [LM Evaluation Harness](https://github.com/EleutherAI/lm-evaluation-harness).
 
-Supports both **NVIDIA CUDA GPUs** (via BitsAndBytes) and **Apple Silicon Macs** (via optimum-quanto).
+Supports both **NVIDIA CUDA GPUs** and **Apple Silicon Macs (MPS)**.
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ Supports both **NVIDIA CUDA GPUs** (via BitsAndBytes) and **Apple Silicon Macs**
 - [uv](https://docs.astral.sh/uv/) package manager
 - One of the following:
   - **CUDA GPU** (Linux/Windows) — uses [BitsAndBytes](https://github.com/bitsandbytes-foundation/bitsandbytes) for quantization
-  - **Apple Silicon Mac** (M1/M2/M3/M4) — uses [optimum-quanto](https://github.com/huggingface/optimum-quanto) for quantization
+  - **Apple Silicon Mac** (M1/M2/M3/M4) — runs BF16 baseline on MPS (quantization disabled)
 - HuggingFace account (if using gated models, accept the license on HuggingFace first)
 
 ## Setup
@@ -22,7 +22,7 @@ Install dependencies for your platform:
 uv sync --extra cuda
 
 # Apple Silicon Mac (MPS)
-uv sync --extra mps
+uv sync
 ```
 
 Log in to HuggingFace (required for gated model access):
@@ -80,11 +80,22 @@ bash run_benchmarks.sh mps --skip-perf
 bash run_benchmarks.sh mps --skip-perf --tasks ifeval --batch-size 1 --limit 10
 ```
 
-This runs three configurations sequentially:
+On CUDA, this runs three configurations sequentially:
 
 1. **BF16** — full precision baseline
 2. **INT8** — 8-bit quantization
 3. **INT4** — 4-bit quantization
+
+On MPS, quantization is disabled, so only **BF16** executes. INT8/INT4 remain
+in run artifacts and comparison tables with `N/A` values for consistency.
+
+Why quantization is disabled on MPS in this project:
+
+- **No native BitsAndBytes Metal kernels**: BitsAndBytes quantization is built around highly tuned CUDA kernels. Equivalent native kernels are not available on MPS.
+- **Dequantization overhead**: without native low-bit kernels, weights are often expanded to higher precision during compute, which adds memory traffic and extra compute overhead.
+- **Observed memory behavior**: in practice, VRAM usage on MPS may not decrease (and can slightly increase) due to runtime/bookkeeping overhead instead of true low-bit execution.
+
+Because of this, this repo treats MPS as a BF16 baseline path, and reserves INT8/INT4 comparisons for CUDA.
 
 For each configuration, both a **quality benchmark** (lm-eval) and a **performance benchmark** (throughput/latency/VRAM) are run. Use `--skip-perf` to skip the performance benchmarks.
 
@@ -138,7 +149,7 @@ The default task configuration evaluates:
 - **HellaSwag**: `acc_norm` (normalized accuracy)
 - **IFEval**: `prompt_level_strict_acc`, `inst_level_strict_acc`, `prompt_level_loose_acc`, `inst_level_loose_acc`
 
-If you use different tasks (via script defaults or `--tasks`), update the `TASK_METRICS` dict in `compare_results.py` to match.
+`compare_results.py` discovers task metrics dynamically from the result payloads.
 
 ### Performance metrics
 
@@ -158,6 +169,6 @@ Methodology:
 ## Notes
 
 - Each benchmark run takes 30-60+ minutes depending on hardware and model size.
-- CUDA uses BitsAndBytes for quantization; MPS uses optimum-quanto. These are different quantization backends, so results are **not directly comparable across platforms** — only compare configurations within the same platform.
-- On MPS, quantized runs (INT8/INT4) use a Python wrapper (`run_benchmark_quanto.py`) instead of the `lm_eval` CLI, because `lm_eval`'s CLI cannot pass the `QuantoConfig` object required by optimum-quanto.
+- CUDA supports BF16/INT8/INT4. MPS supports BF16 only.
+- BitsAndBytes low-bit quantization is CUDA-optimized; this project does not run quantized paths on MPS to avoid misleading performance/memory conclusions.
 - Peak VRAM tracking is only available on CUDA (`torch.cuda.max_memory_allocated`). On MPS, the "VRAM Peak" column shows N/A.

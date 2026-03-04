@@ -24,7 +24,6 @@ from benchmark_common import (
     read_json,
     validate_platform_dependencies_or_exit,
 )
-from run_benchmark_quanto import run_quanto_quality
 from run_perf_benchmark import run_performance_benchmark
 
 RESULTS_DIR = Path("results")
@@ -34,6 +33,7 @@ CONFIGS: list[tuple[str, str]] = [
     ("INT8", "int8"),
     ("INT4", "int4"),
 ]
+QUANT_CHOICES = [quant for _, quant in CONFIGS]
 
 
 def parse_args() -> argparse.Namespace:
@@ -54,6 +54,15 @@ def parse_args() -> argparse.Namespace:
     add_model_arg(parser)
     add_tasks_arg(parser)
     add_batch_size_arg(parser)
+    parser.add_argument(
+        "--quant",
+        action="append",
+        default=None,
+        help=(
+            "Quantization config(s) to run: bf16, int8, int4. "
+            "Accepts repeated flags or comma-separated values."
+        ),
+    )
     parser.add_argument(
         "--limit",
         type=int,
@@ -101,6 +110,35 @@ def run_command(command: list[str]) -> None:
     subprocess.run(command, check=True)
 
 
+def parse_selected_quants(raw_values: list[str] | None) -> list[str]:
+    if not raw_values:
+        return QUANT_CHOICES
+
+    selected: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        for value in raw.split(","):
+            quant = value.strip().lower()
+            if not quant:
+                continue
+            if quant not in QUANT_CHOICES:
+                choices = ", ".join(QUANT_CHOICES)
+                raise ValueError(
+                    f"Invalid --quant '{quant}'. Expected one of: {choices}"
+                )
+            if quant not in seen:
+                selected.append(quant)
+                seen.add(quant)
+
+    if not selected:
+        choices = ", ".join(QUANT_CHOICES)
+        raise ValueError(
+            f"No valid --quant values provided. Expected one of: {choices}"
+        )
+
+    return selected
+
+
 def build_lm_eval_quality_command(
     platform: str,
     model: str,
@@ -119,7 +157,7 @@ def build_lm_eval_quality_command(
                 "--model",
                 "hf",
                 "--model_args",
-                f"pretrained={model},dtype=float16",
+                f"pretrained={model},dtype=bfloat16",
                 "--tasks",
                 tasks,
                 "--batch_size",
@@ -179,6 +217,12 @@ def main() -> None:
     args = parse_args()
     platform = args.platform
 
+    try:
+        selected_quants = parse_selected_quants(args.quant)
+    except ValueError as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
+
     if platform is None:
         print("No platform specified, auto-detecting...")
         platform = detect_platform_or_exit()
@@ -201,17 +245,32 @@ def main() -> None:
         "tasks": task_list,
         "batch_size": args.batch_size,
         "limit": args.limit,
+        "quants": selected_quants,
         "include_performance_metrics": not args.skip_perf,
         "configs": {},
     }
 
     for _, quant in CONFIGS:
+        selected = quant in selected_quants
+        unsupported_on_mps = platform == "mps" and quant in {"int8", "int4"}
+        skipped_reason = None
+        if not selected:
+            skipped_reason = "Not selected via --quant."
+        elif unsupported_on_mps:
+            skipped_reason = "Quantization is disabled on MPS; BF16 baseline only."
+
         run_data["configs"][quant] = {
             "quality": {
-                "status": "pending",
+                "status": "skipped" if skipped_reason else "pending",
+                "reason": skipped_reason,
             },
             "performance": {
-                "status": "skipped" if args.skip_perf else "pending",
+                "status": (
+                    "skipped" if args.skip_perf or skipped_reason else "pending"
+                ),
+                "reason": (
+                    "Skipped via --skip-perf." if args.skip_perf else skipped_reason
+                ),
             },
         }
 
@@ -224,6 +283,7 @@ def main() -> None:
     print(f"Model:     {args.model}")
     print(f"Tasks:     {args.tasks}")
     print(f"Batch:     {args.batch_size}")
+    print(f"Quant:     {','.join(selected_quants)}")
     print(f"Limit:     {args.limit if args.limit is not None else 'none'}")
     print(f"Platform:  {platform}")
     print(
@@ -237,10 +297,12 @@ def main() -> None:
 
     for index, (display_name, quant) in enumerate(CONFIGS, start=1):
         output_path = RESULTS_DIR / quant
+        selected = quant in selected_quants
+        unsupported_on_mps = platform == "mps" and quant in {"int8", "int4"}
 
         print("============================================")
         if quant == "bf16" and platform == "mps":
-            print(f"  [{index}/3] Running FP16 (baseline)")
+            print(f"  [{index}/3] Running BF16 (baseline)")
         elif quant == "bf16":
             print(f"  [{index}/3] Running {display_name} (baseline)")
         else:
@@ -248,34 +310,33 @@ def main() -> None:
             print(f"  [{index}/3] Running {display_name} ({bits} quantization)")
         print("============================================")
 
+        if not selected:
+            print("  Skipping: not selected via --quant.")
+            print()
+            continue
+
+        if unsupported_on_mps:
+            print("  Skipping: quantization is disabled on MPS (BF16 only).")
+            print()
+            continue
+
         run_data["configs"][quant]["quality"]["started_at"] = now_timestamp()
         write_run_file(run_file, run_data)
 
         quality_cmd: list[str] | None = None
         try:
-            if platform == "mps" and quant in {"int8", "int4"}:
-                quality_file, quality_payload = run_quanto_quality(
-                    model_id=args.model,
-                    tasks=args.tasks,
-                    batch_size=args.batch_size,
-                    output_path=output_path,
-                    weights=quant,
-                    device="mps",
-                    limit=args.limit,
-                )
-            else:
-                quality_cmd = build_lm_eval_quality_command(
-                    platform=platform,
-                    model=args.model,
-                    tasks=args.tasks,
-                    batch_size=args.batch_size,
-                    quant=quant,
-                    output_path=output_path,
-                    limit=args.limit,
-                )
-                run_command(quality_cmd)
-                quality_file = find_latest_quality_file(output_path, args.model)
-                quality_payload = read_json(quality_file) if quality_file else None
+            quality_cmd = build_lm_eval_quality_command(
+                platform=platform,
+                model=args.model,
+                tasks=args.tasks,
+                batch_size=args.batch_size,
+                quant=quant,
+                output_path=output_path,
+                limit=args.limit,
+            )
+            run_command(quality_cmd)
+            quality_file = find_latest_quality_file(output_path, args.model)
+            quality_payload = read_json(quality_file) if quality_file else None
         except Exception as exc:
             run_data["configs"][quant]["quality"].update(
                 {

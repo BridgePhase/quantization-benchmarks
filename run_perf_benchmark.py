@@ -1,4 +1,4 @@
-"""Measure inference performance (VRAM, throughput, latency) for a quantized model."""
+"""Measure inference performance (VRAM, throughput, latency) for benchmark configs."""
 
 import argparse
 import statistics
@@ -27,7 +27,7 @@ PROMPTS = [
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Measure inference performance for a quantized model."
+        description="Measure inference performance for a model/quantization config."
     )
     add_model_arg(parser, required=True)
     parser.add_argument(
@@ -72,7 +72,7 @@ def load_model(model_id: str, quant: str, device: str):
 
     if quant == "bf16":
         if device == "mps":
-            kwargs["torch_dtype"] = torch.float16
+            kwargs["torch_dtype"] = torch.bfloat16
         else:
             kwargs["torch_dtype"] = torch.bfloat16
         kwargs["device_map"] = device
@@ -82,12 +82,6 @@ def load_model(model_id: str, quant: str, device: str):
             kwargs["load_in_8bit"] = True
         elif quant == "int4":
             kwargs["load_in_4bit"] = True
-    elif device == "mps":
-        # optimum-quanto for MPS
-        from transformers import QuantoConfig
-
-        kwargs["quantization_config"] = QuantoConfig(weights=quant)
-        kwargs["device_map"] = device
 
     model = AutoModelForCausalLM.from_pretrained(model_id, **kwargs)
     tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -196,6 +190,12 @@ def run_performance_benchmark(
     warmup: int = 1,
     iterations: int = 5,
 ) -> tuple[Path, dict]:
+    if device == "mps" and quant in {"int8", "int4"}:
+        raise ValueError(
+            "Quantized performance runs are unsupported on MPS. "
+            "Use --quant bf16 for MPS."
+        )
+
     print(f"Loading {model_id} ({quant}) on {device}...")
     model, tokenizer = load_model(model_id, quant, device)
 

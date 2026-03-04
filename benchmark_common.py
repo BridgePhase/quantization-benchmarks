@@ -58,13 +58,6 @@ def validate_platform_dependencies_or_exit(platform: str) -> None:
             print("Error: bitsandbytes is not installed. Install it with:")
             print("  uv sync --extra cuda")
             sys.exit(1)
-    elif platform == "mps":
-        try:
-            importlib.import_module("optimum.quanto")
-        except ModuleNotFoundError:
-            print("Error: optimum-quanto is not installed. Install it with:")
-            print("  uv sync --extra mps")
-            sys.exit(1)
 
 
 def add_model_arg(

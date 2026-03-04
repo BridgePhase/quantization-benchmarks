@@ -1,8 +1,7 @@
-"""Parse lm-eval results and print a comparison table across quantization configs."""
+"""Print quality/performance comparison tables from the latest run artifact."""
 
 import argparse
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -24,70 +23,22 @@ PERF_METRICS = [
 ]
 
 
-def find_results_file(config_dir: Path) -> Path | None:
-    """Find the results JSON file inside a config's output directory.
-
-    lm-eval writes results to: <output_path>/<model_name>/<filename>.json
-    We look for any JSON file containing a "results" key.
-    """
-    if not config_dir.is_dir():
+def find_latest_run_file(results_dir: Path) -> Path | None:
+    candidates = [path for path in results_dir.glob("*-results.json") if path.is_file()]
+    if not candidates:
         return None
-
-    # Prefer the most recent timestamped quality file.
-    timestamped_files = sorted(
-        config_dir.rglob("*-results.json"),
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    for json_file in timestamped_files:
-        if json_file.name == "perf_results.json":
-            continue
-        try:
-            data = json.loads(json_file.read_text())
-            if "results" in data:
-                return json_file
-        except (json.JSONDecodeError, KeyError):
-            continue
-
-    # Fallback to legacy file name.
-    for json_file in sorted(config_dir.rglob("results.json"), reverse=True):
-        return json_file
-
-    # Fallback: look for any JSON with a "results" key.
-    for json_file in sorted(config_dir.rglob("*.json"), reverse=True):
-        if json_file.name == "perf_results.json":
-            continue
-        try:
-            data = json.loads(json_file.read_text())
-            if "results" in data:
-                return json_file
-        except (json.JSONDecodeError, KeyError):
-            continue
-    return None
-
-
-def find_perf_results_file(config_dir: Path) -> Path | None:
-    """Find perf_results.json inside a config's output directory."""
-    if not config_dir.is_dir():
-        return None
-    for json_file in sorted(config_dir.rglob("perf_results.json")):
-        return json_file
-    return None
+    return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
 def task_metric_label(task_name: str, metric_name: str) -> str:
     return f"{task_name} {metric_name}"
 
 
-def discover_quality_metrics(quality_files: list[Path]) -> list[tuple[str, str]]:
+def discover_quality_metrics(quality_payloads: list[dict]) -> list[tuple[str, str]]:
     """Discover quality metrics dynamically from lm-eval result payloads."""
     discovered: set[tuple[str, str]] = set()
-    for quality_file in quality_files:
-        try:
-            data = json.loads(quality_file.read_text())
-        except json.JSONDecodeError:
-            continue
-        results = data.get("results")
+    for payload in quality_payloads:
+        results = payload.get("results")
         if not isinstance(results, dict):
             continue
         for task_name, task_data in results.items():
@@ -103,24 +54,22 @@ def discover_quality_metrics(quality_files: list[Path]) -> list[tuple[str, str]]
     return sorted(discovered)
 
 
-def extract_metrics(
-    results_file: Path,
+def extract_quality_metrics(
+    payload: dict,
     metric_specs: list[tuple[str, str]],
 ) -> dict[str, float | None]:
-    """Extract dynamic quality metrics from a results JSON file."""
-    data = json.loads(results_file.read_text())
-    results = data.get("results", {})
-    metrics = {}
+    """Extract dynamic quality metrics from a quality payload."""
+    results = payload.get("results", {})
+    metrics: dict[str, float | None] = {}
 
     for task, metric_name in metric_specs:
-        task_data = results.get(task, {})
+        task_data = results.get(task, {}) if isinstance(results, dict) else {}
         display_name = task_metric_label(task, metric_name)
         if not isinstance(task_data, dict):
             metrics[display_name] = None
             continue
 
         value = task_data.get(metric_name)
-        # lm-eval often uses filter suffixes such as ",none".
         if not isinstance(value, (int, float)):
             value = None
             for key, candidate in task_data.items():
@@ -134,39 +83,13 @@ def extract_metrics(
     return metrics
 
 
-def extract_perf_metrics(perf_file: Path) -> dict[str, float | None]:
-    """Extract performance metrics from a perf_results.json file."""
-    data = json.loads(perf_file.read_text())
-    metrics = {}
+def extract_perf_metrics(perf_payload: dict) -> dict[str, float | None]:
+    """Extract performance metrics from a perf payload."""
+    metrics: dict[str, float | None] = {}
     for metric_key, display_name in PERF_METRICS:
-        metrics[display_name] = data.get(metric_key)
+        value = perf_payload.get(metric_key)
+        metrics[display_name] = value if isinstance(value, (int, float)) else None
     return metrics
-
-
-def infer_model_label(result_file: Path) -> str | None:
-    """Infer model label from a result/perf JSON file path/payload."""
-    model_dir_name = result_file.parent.name
-    if "__" in model_dir_name:
-        return model_dir_name.replace("__", "/")
-
-    try:
-        data = json.loads(result_file.read_text())
-    except json.JSONDecodeError:
-        return None
-
-    config = data.get("config")
-    if isinstance(config, dict):
-        model = config.get("model")
-        if isinstance(model, str) and model:
-            return model
-
-        model_args = config.get("model_args")
-        if isinstance(model_args, str):
-            match = re.search(r"pretrained=([^,]+)", model_args)
-            if match:
-                return match.group(1)
-
-    return None
 
 
 def print_table(
@@ -207,7 +130,7 @@ def print_table(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compare benchmark quality and performance results across quant configs.",
+        description="Compare benchmark quality and performance results from the latest run.",
     )
     parser.add_argument(
         "--model",
@@ -226,59 +149,67 @@ def main() -> None:
         print("Run the benchmarks first: bash run_benchmarks.sh")
         sys.exit(1)
 
-    # Collect metrics for each config
-    all_quality: dict[str, dict[str, float | None]] = {}
-    all_perf: dict[str, dict[str, float | None]] = {}
-    quality_files: dict[str, Path | None] = {}
-    found_quality = False
-    found_perf = False
-    inferred_model_label: str | None = None
-
-    for config_name, config_dir_name in CONFIGS:
-        config_dir = RESULTS_DIR / config_dir_name
-        results_file = find_results_file(config_dir)
-        quality_files[config_name] = results_file
-        if results_file:
-            found_quality = True
-            if inferred_model_label is None:
-                inferred_model_label = infer_model_label(results_file)
-
-        perf_file = find_perf_results_file(config_dir)
-        if perf_file:
-            all_perf[config_name] = extract_perf_metrics(perf_file)
-            found_perf = True
-            if inferred_model_label is None:
-                inferred_model_label = infer_model_label(perf_file)
-        else:
-            all_perf[config_name] = {}
-
-    if not found_quality and not found_perf:
-        print("No results found. Run the benchmarks first: bash run_benchmarks.sh")
+    run_file = find_latest_run_file(RESULTS_DIR)
+    if run_file is None:
+        print(
+            "No run artifacts found. Run the benchmarks first: bash run_benchmarks.sh"
+        )
         sys.exit(1)
 
+    try:
+        run_data = json.loads(run_file.read_text())
+    except json.JSONDecodeError:
+        print(f"Error: Latest run artifact is not valid JSON: {run_file}")
+        sys.exit(1)
+
+    if not isinstance(run_data, dict):
+        print(f"Error: Latest run artifact has unexpected format: {run_file}")
+        sys.exit(1)
+
+    configs_data = run_data.get("configs")
+    if not isinstance(configs_data, dict):
+        print(f"Error: Latest run artifact is missing 'configs': {run_file}")
+        sys.exit(1)
+
+    run_id = run_data.get("run_id")
+    model_label = args.model or run_data.get("model") or "Model"
     config_names = [name for name, _ in CONFIGS]
-    model_label = args.model or inferred_model_label or "Model"
 
-    # Quality metrics table
-    if found_quality:
-        discovered_metrics = discover_quality_metrics(
-            [path for path in quality_files.values() if path is not None],
-        )
-        if not discovered_metrics:
-            print("No quality metrics found in result payloads.")
-            found_quality = False
+    print(f"Run ID:   {run_id if isinstance(run_id, str) else 'unknown'}")
+    print(f"Run file: {run_file}")
 
-    if found_quality:
+    quality_payloads: dict[str, dict] = {}
+    perf_payloads: dict[str, dict] = {}
+
+    for config_name, quant in CONFIGS:
+        config_data = configs_data.get(quant)
+        if not isinstance(config_data, dict):
+            continue
+
+        quality = config_data.get("quality")
+        if isinstance(quality, dict):
+            payload = quality.get("payload")
+            if isinstance(payload, dict):
+                quality_payloads[config_name] = payload
+
+        performance = config_data.get("performance")
+        if isinstance(performance, dict):
+            payload = performance.get("payload")
+            if isinstance(payload, dict):
+                perf_payloads[config_name] = payload
+
+    discovered_metrics = discover_quality_metrics(list(quality_payloads.values()))
+    if discovered_metrics:
         quality_metric_names = [
             task_metric_label(task, metric_name)
             for task, metric_name in discovered_metrics
         ]
-
+        all_quality: dict[str, dict[str, float | None]] = {}
         for config_name in config_names:
-            results_file = quality_files.get(config_name)
-            if results_file is not None:
-                all_quality[config_name] = extract_metrics(
-                    results_file, discovered_metrics
+            payload = quality_payloads.get(config_name)
+            if payload is not None:
+                all_quality[config_name] = extract_quality_metrics(
+                    payload, discovered_metrics
                 )
             else:
                 all_quality[config_name] = {}
@@ -289,18 +220,25 @@ def main() -> None:
             all_quality,
             config_names,
         )
+    else:
+        print("No quality metrics found in the latest run artifact.")
 
-    # Performance metrics table
-    if found_perf:
-        perf_metric_names = [display_name for _, display_name in PERF_METRICS]
+    perf_metric_names = [display_name for _, display_name in PERF_METRICS]
+    all_perf: dict[str, dict[str, float | None]] = {}
+    for config_name in config_names:
+        payload = perf_payloads.get(config_name)
+        if payload is not None:
+            all_perf[config_name] = extract_perf_metrics(payload)
+        else:
+            all_perf[config_name] = {}
 
-        print_table(
-            f"{model_label} Performance Metrics",
-            perf_metric_names,
-            all_perf,
-            config_names,
-            fmt=".1f",
-        )
+    print_table(
+        f"{model_label} Performance Metrics",
+        perf_metric_names,
+        all_perf,
+        config_names,
+        fmt=".1f",
+    )
 
 
 if __name__ == "__main__":

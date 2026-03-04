@@ -8,7 +8,6 @@ Guidance for coding agents working in this repository.
 - Package manager / runner: `uv`
 - Main entrypoints:
   - `run_benchmarks.sh` (end-to-end quality + perf benchmarks)
-  - `run_benchmark_quanto.py` (MPS quantized quality benchmark wrapper)
   - `run_perf_benchmark.py` (performance benchmark)
   - `compare_results.py` (aggregate and print comparison tables)
 - Output artifacts are written under `results/` (gitignored).
@@ -27,7 +26,7 @@ agent instructions and update this file accordingly.
 1. Use Python 3.11 or newer.
 2. Install dependencies with platform extras:
    - CUDA: `uv sync --extra cuda`
-   - Apple Silicon (MPS): `uv sync --extra mps`
+   - Apple Silicon (MPS): `uv sync`
 3. For gated models, authenticate once:
    - `uv run huggingface-cli login`
 
@@ -41,7 +40,7 @@ Use the commands below for validation and benchmarking.
 ### Build / Dependency Sync
 
 - Install/update env (CUDA): `uv sync --extra cuda`
-- Install/update env (MPS): `uv sync --extra mps`
+- Install/update env (MPS): `uv sync`
 - Lockfile refresh (if needed): `uv lock`
 
 ### Run Benchmarks (Primary Validation)
@@ -64,8 +63,7 @@ or one script invocation:
   - run `bash run_benchmarks.sh mps --skip-perf`
 - Single performance benchmark invocation:
   - `uv run python run_perf_benchmark.py --model <model> --quant bf16 --device mps --output-path results/bf16`
-- Single quantized MPS quality run:
-  - `uv run python run_benchmark_quanto.py --model <model> --tasks ifeval --batch_size auto --output_path results/int8 --weights int8 --device mps`
+- Note: MPS runs are BF16-only; INT8/INT4 quantization is unsupported on MPS.
 
 ### Compare Results
 

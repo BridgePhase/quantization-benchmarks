@@ -14,4 +14,3 @@ dependencies = [
 
 [project.optional-dependencies]
 cuda = ["bitsandbytes>=0.49.2"]
-mps = ["optimum-quanto>=0.2.0"]
