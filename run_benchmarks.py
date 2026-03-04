@@ -80,25 +80,30 @@ def write_run_file(path: Path, data: dict) -> None:
 
 
 def find_latest_quality_file(config_dir: Path, model_id: str) -> Path | None:
-    out_dir = model_output_dir(config_dir, model_id)
-    if not out_dir.is_dir():
-        return None
+    search_dirs: list[Path] = []
 
-    explicit = out_dir / "results.json"
-    if explicit.is_file():
-        return explicit
+    normalized_dir = model_output_dir(config_dir, model_id)
+    if normalized_dir.is_dir():
+        search_dirs.append(normalized_dir)
 
-    candidates = sorted(
-        out_dir.glob("*.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
+    slash_dir = config_dir / model_id
+    if slash_dir.is_dir() and slash_dir not in search_dirs:
+        search_dirs.append(slash_dir)
+
+    if not search_dirs:
+        search_dirs.append(config_dir)
+
+    candidates: list[Path] = []
+    for search_dir in search_dirs:
+        candidates.extend(search_dir.rglob("*.json"))
+
+    candidates = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)
     for candidate in candidates:
-        if candidate.name == "perf_results.json":
+        if candidate.name in {"perf_results.json"}:
             continue
         try:
             data = read_json(candidate)
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, OSError):
             continue
         if isinstance(data, dict) and "results" in data:
             return candidate
