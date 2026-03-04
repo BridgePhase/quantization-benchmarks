@@ -3,7 +3,7 @@ set -euo pipefail
 
 MODEL="meta-llama/Llama-3.2-3B"
 TASKS="ifeval,hellaswag"
-BATCH_SIZE="auto"
+BATCH_SIZE="1"
 
 # --- Argument parsing ---
 PLATFORM=""
@@ -45,9 +45,22 @@ while [ "$#" -gt 0 ]; do
       TASKS="${1#*=}"
       shift
       ;;
+    --batch-size)
+      if [ "$#" -lt 2 ]; then
+        echo "Error: --batch-size requires a value."
+        echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>] [--batch-size <size>]"
+        exit 1
+      fi
+      BATCH_SIZE="$2"
+      shift 2
+      ;;
+    --batch-size=*)
+      BATCH_SIZE="${1#*=}"
+      shift
+      ;;
     *)
       echo "Error: Unknown argument '$1'."
-      echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>]"
+      echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>] [--batch-size <size>]"
       exit 1
       ;;
   esac
@@ -62,7 +75,7 @@ if [ -z "$PLATFORM" ]; then
     PLATFORM="mps"
   else
     echo "Error: No supported GPU detected (checked CUDA and MPS)."
-    echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>]"
+    echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>] [--batch-size <size>]"
     exit 1
   fi
   echo "Detected platform: $PLATFORM"
@@ -70,7 +83,7 @@ fi
 
 if [ "$PLATFORM" != "cuda" ] && [ "$PLATFORM" != "mps" ]; then
   echo "Error: Invalid platform '$PLATFORM'. Must be 'cuda' or 'mps'."
-  echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>]"
+  echo "Usage: bash run_benchmarks.sh [cuda|mps] [--skip-perf] [--model <model>] [--tasks <tasks>] [--batch-size <size>]"
   exit 1
 fi
 
@@ -95,6 +108,7 @@ echo "============================================"
 echo ""
 echo "Model:     $MODEL"
 echo "Tasks:     $TASKS"
+echo "Batch:     $BATCH_SIZE"
 echo "Platform:  $PLATFORM"
 if [ "$SKIP_PERF" = true ]; then
   echo "Perf:      SKIPPED (--skip-perf)"

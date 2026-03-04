@@ -38,12 +38,14 @@ uv run huggingface-cli login
 ```bash
 MODEL="meta-llama/Llama-3.2-3B"   # Any HuggingFace model ID
 TASKS="ifeval,hellaswag"           # Comma-separated lm-eval task names
+BATCH_SIZE="1"                     # Shared eval batch size (CUDA + MPS)
 ```
 
 You can override either value at runtime via CLI flags:
 
 - `--model <huggingface-model-id>`
 - `--tasks <comma-separated-task-list>`
+- `--batch-size <size>` (defaults to `1`)
 
 ## Usage
 
@@ -60,6 +62,10 @@ bash run_benchmarks.sh mps
 # Override model and/or tasks
 bash run_benchmarks.sh mps --model "google/gemma-2-2b" --tasks "ifeval"
 bash run_benchmarks.sh cuda --tasks "hellaswag,ifeval"
+
+# Set an explicit batch size for apples-to-apples comparisons
+bash run_benchmarks.sh mps --batch-size 1
+bash run_benchmarks.sh cuda --batch-size 1
 
 # Skip performance benchmarks (quality-only)
 bash run_benchmarks.sh mps --skip-perf
