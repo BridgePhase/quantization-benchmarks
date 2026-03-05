@@ -62,7 +62,7 @@ or one script invocation:
   - set `TASKS="hellaswag"` (or another single task) in `run_benchmarks.sh`
   - run `bash run_benchmarks.sh mps --skip-perf`
 - Single performance benchmark invocation:
-  - `uv run python run_perf_benchmark.py --model <model> --quant bf16 --device mps --output-path results/bf16`
+  - `uv run python run_perf_benchmark.py --model <model> --quant bf16 --device mps --output-path results/<model-slug>/bf16`
 - Note: MPS runs are BF16-only; INT8/INT4 quantization is unsupported on MPS.
 
 ### Compare Results

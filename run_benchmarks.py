@@ -79,23 +79,10 @@ def write_run_file(path: Path, data: dict) -> None:
     temp_path.replace(path)
 
 
-def find_latest_quality_file(config_dir: Path, model_id: str) -> Path | None:
-    search_dirs: list[Path] = []
-
-    normalized_dir = model_output_dir(config_dir, model_id)
-    if normalized_dir.is_dir():
-        search_dirs.append(normalized_dir)
-
-    slash_dir = config_dir / model_id
-    if slash_dir.is_dir() and slash_dir not in search_dirs:
-        search_dirs.append(slash_dir)
-
-    if not search_dirs:
-        search_dirs.append(config_dir)
-
+def find_latest_quality_file(output_dir: Path) -> Path | None:
     candidates: list[Path] = []
-    for search_dir in search_dirs:
-        candidates.extend(search_dir.rglob("*.json"))
+    if output_dir.is_dir():
+        candidates.extend(output_dir.rglob("*.json"))
 
     candidates = sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)
     for candidate in candidates:
@@ -301,7 +288,7 @@ def main() -> None:
     print()
 
     for index, (display_name, quant) in enumerate(CONFIGS, start=1):
-        output_path = RESULTS_DIR / quant
+        output_path = model_output_dir(RESULTS_DIR, args.model) / quant
         selected = quant in selected_quants
         unsupported_on_mps = platform == "mps" and quant in {"int8", "int4"}
 
@@ -340,7 +327,7 @@ def main() -> None:
                 limit=args.limit,
             )
             run_command(quality_cmd)
-            quality_file = find_latest_quality_file(output_path, args.model)
+            quality_file = find_latest_quality_file(output_path)
             quality_payload = read_json(quality_file) if quality_file else None
         except Exception as exc:
             run_data["configs"][quant]["quality"].update(

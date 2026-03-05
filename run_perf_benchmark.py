@@ -12,7 +12,6 @@ from benchmark_common import (
     add_device_arg,
     add_model_arg,
     add_output_path_arg,
-    model_output_dir,
     write_json,
 )
 
@@ -227,8 +226,8 @@ def run_performance_benchmark(
         **perf_metrics,
     }
 
-    # Save to <output-path>/<model_name>/perf_results.json
-    output_dir = model_output_dir(output_path, model_id)
+    # Save to <output-path>/perf_results.json
+    output_dir = Path(output_path)
     output_dir.mkdir(parents=True, exist_ok=True)
     output_file = output_dir / "perf_results.json"
     write_json(output_file, results)

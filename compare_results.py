@@ -5,6 +5,8 @@ import json
 import sys
 from pathlib import Path
 
+from benchmark_common import model_output_dir
+
 RESULTS_DIR = Path("results")
 
 CONFIGS = [
@@ -92,13 +94,12 @@ def extract_perf_metrics(perf_payload: dict) -> dict[str, float | None]:
     return metrics
 
 
-def find_latest_quality_payload_for_quant(quant: str) -> dict | None:
-    quant_dir = RESULTS_DIR / quant
-    if not quant_dir.is_dir():
+def _find_latest_quality_payload(search_dir: Path) -> dict | None:
+    if not search_dir.is_dir():
         return None
 
     candidates = sorted(
-        quant_dir.rglob("*.json"),
+        search_dir.rglob("*.json"),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )
@@ -112,6 +113,21 @@ def find_latest_quality_payload_for_quant(quant: str) -> dict | None:
         if isinstance(payload, dict) and isinstance(payload.get("results"), dict):
             return payload
     return None
+
+
+def find_latest_quality_payload_for_quant(
+    quant: str, model_id: str | None
+) -> dict | None:
+    # Preferred layout: results/<model>/<quant>/...
+    if isinstance(model_id, str) and model_id.strip():
+        model_quant_dir = model_output_dir(RESULTS_DIR, model_id) / quant
+        payload = _find_latest_quality_payload(model_quant_dir)
+        if payload is not None:
+            return payload
+
+    # Legacy layout fallback: results/<quant>/<model>/...
+    legacy_quant_dir = RESULTS_DIR / quant
+    return _find_latest_quality_payload(legacy_quant_dir)
 
 
 def print_table(
@@ -194,7 +210,8 @@ def main() -> None:
         sys.exit(1)
 
     run_id = run_data.get("run_id")
-    model_label = args.model or run_data.get("model") or "Model"
+    model_id = run_data.get("model")
+    model_label = args.model or model_id or "Model"
     config_names = [name for name, _ in CONFIGS]
 
     print(f"Run ID:   {run_id if isinstance(run_id, str) else 'unknown'}")
@@ -214,7 +231,9 @@ def main() -> None:
             if isinstance(payload, dict):
                 quality_payloads[config_name] = payload
             else:
-                fallback_payload = find_latest_quality_payload_for_quant(quant)
+                fallback_payload = find_latest_quality_payload_for_quant(
+                    quant, model_id if isinstance(model_id, str) else None
+                )
                 if isinstance(fallback_payload, dict):
                     quality_payloads[config_name] = fallback_payload
 

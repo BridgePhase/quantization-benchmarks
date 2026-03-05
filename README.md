@@ -78,6 +78,9 @@ bash run_benchmarks.sh mps --skip-perf
 
 # Fast smoke test using only first 10 eval samples per task
 bash run_benchmarks.sh mps --skip-perf --tasks ifeval --batch-size 1 --limit 10
+
+# Local Mac smoke test with a small model/task sample
+./run_benchmarks.sh mps --tasks hellaswag --model "TinyLlama/TinyLlama-1.1B-Chat-v1.0" --batch-size 1 --limit 2
 ```
 
 On CUDA, this runs three configurations sequentially:
@@ -99,7 +102,7 @@ Because of this, this repo treats MPS as a BF16 baseline path, and reserves INT8
 
 For each configuration, both a **quality benchmark** (lm-eval) and a **performance benchmark** (throughput/latency/VRAM) are run. Use `--skip-perf` to skip the performance benchmarks.
 
-Results are saved to `results/{bf16,int8,int4}/`. Each directory contains:
+Results are saved to `results/<model>/{bf16,int8,int4}/`. Each directory contains:
 - `results.json` (or lm-eval JSON variant) — quality metrics from the backend runner
 - `perf_results.json` — performance metrics (VRAM, throughput, latency)
 
@@ -127,7 +130,7 @@ uv run python run_perf_benchmark.py \
   --model meta-llama/Llama-3.2-3B \
   --quant bf16 \
   --device mps \
-  --output-path results/bf16
+  --output-path results/meta-llama__Llama-3.2-3B/bf16
 ```
 
 Options: `--max-new-tokens` (default 128), `--warmup` (default 1), `--iterations` (default 5).
