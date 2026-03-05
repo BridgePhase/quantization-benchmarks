@@ -92,6 +92,28 @@ def extract_perf_metrics(perf_payload: dict) -> dict[str, float | None]:
     return metrics
 
 
+def find_latest_quality_payload_for_quant(quant: str) -> dict | None:
+    quant_dir = RESULTS_DIR / quant
+    if not quant_dir.is_dir():
+        return None
+
+    candidates = sorted(
+        quant_dir.rglob("*.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    for candidate in candidates:
+        if candidate.name == "perf_results.json":
+            continue
+        try:
+            payload = json.loads(candidate.read_text())
+        except (json.JSONDecodeError, OSError):
+            continue
+        if isinstance(payload, dict) and isinstance(payload.get("results"), dict):
+            return payload
+    return None
+
+
 def print_table(
     title: str,
     metric_names: list[str],
@@ -191,6 +213,10 @@ def main() -> None:
             payload = quality.get("payload")
             if isinstance(payload, dict):
                 quality_payloads[config_name] = payload
+            else:
+                fallback_payload = find_latest_quality_payload_for_quant(quant)
+                if isinstance(fallback_payload, dict):
+                    quality_payloads[config_name] = fallback_payload
 
         performance = config_data.get("performance")
         if isinstance(performance, dict):
