@@ -70,10 +70,7 @@ def load_model(model_id: str, quant: str, device: str):
     kwargs = {}
 
     if quant == "bf16":
-        if device == "mps":
-            kwargs["torch_dtype"] = torch.bfloat16
-        else:
-            kwargs["torch_dtype"] = torch.bfloat16
+        kwargs["dtype"] = torch.bfloat16
         kwargs["device_map"] = device
     elif device == "cuda":
         # BitsAndBytes quantization for CUDA

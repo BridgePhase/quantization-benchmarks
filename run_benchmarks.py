@@ -24,7 +24,6 @@ from benchmark_common import (
     read_json,
     validate_platform_dependencies_or_exit,
 )
-from run_perf_benchmark import run_performance_benchmark
 
 RESULTS_DIR = Path("results")
 
@@ -205,6 +204,28 @@ def build_lm_eval_quality_command(
     return command
 
 
+def build_perf_benchmark_command(
+    model: str,
+    quant: str,
+    device: str,
+    output_path: Path,
+) -> list[str]:
+    return [
+        "uv",
+        "run",
+        "python",
+        "run_perf_benchmark.py",
+        "--model",
+        model,
+        "--quant",
+        quant,
+        "--device",
+        device,
+        "--output-path",
+        str(output_path),
+    ]
+
+
 def main() -> None:
     args = parse_args()
     platform = args.platform
@@ -363,18 +384,26 @@ def main() -> None:
         run_data["configs"][quant]["performance"]["started_at"] = now_timestamp()
         write_run_file(run_file, run_data)
 
+        perf_cmd = build_perf_benchmark_command(
+            model=args.model,
+            quant=quant,
+            device=platform,
+            output_path=output_path,
+        )
+        perf_file = output_path / "perf_results.json"
+
         try:
-            perf_file, perf_payload = run_performance_benchmark(
-                model_id=args.model,
-                quant=quant,
-                device=platform,
-                output_path=output_path,
-            )
+            # Run each perf benchmark in a fresh subprocess so CUDA allocator
+            # state and loaded model weights from earlier quant runs cannot
+            # inflate the next run's VRAM measurement.
+            run_command(perf_cmd)
+            perf_payload = read_json(perf_file)
         except Exception as exc:
             run_data["configs"][quant]["performance"].update(
                 {
                     "status": "failed",
                     "completed_at": now_timestamp(),
+                    "command": perf_cmd,
                     "return_code": getattr(exc, "returncode", None),
                     "error": str(exc),
                 }
