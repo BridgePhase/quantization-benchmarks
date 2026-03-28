@@ -157,6 +157,43 @@ The default task configuration evaluates:
 
 `compare_results.py` discovers task metrics dynamically from the result payloads.
 
+### Interpreting small quality differences across quantization levels
+
+It is normal for INT8 to score slightly higher than BF16 on some individual
+metrics or MMLU subcategories, even when BF16 remains the better overall
+baseline.
+
+Why this happens:
+
+- Quantization slightly perturbs logits.
+- lm-eval multiple-choice scoring is sensitive to small log-probability changes.
+- Many task slices, especially individual MMLU subjects, have relatively small
+  sample counts.
+- On borderline questions, a tiny numerical change can flip one or two answers
+  from wrong to right, making INT8 appear better on that slice.
+
+Example:
+
+- A subject score changing from `0.6296` to `0.6389` is often just a one-question
+  difference, not evidence that the quantized model is generally stronger.
+
+How to interpret results:
+
+- Trust aggregate metrics more than any single subject row.
+- Treat small per-subject deltas as normal finite-sample variation.
+- Expect INT8 to stay close to BF16 overall, with wins and losses on different
+  slices.
+- Expect INT4 to diverge more, because lower-bit quantization usually introduces
+  larger approximation error.
+
+When to investigate further:
+
+- INT8 beats BF16 by a large margin on the overall benchmark, not just a few
+  subcategories.
+- Repeated runs of the same config produce materially different scores.
+- Different configs are not using the same tokenizer, prompt formatting, or
+  evaluation settings.
+
 ### Performance metrics
 
 The performance benchmark (`run_perf_benchmark.py`) measures:
