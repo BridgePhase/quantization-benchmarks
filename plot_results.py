@@ -22,8 +22,6 @@ QUALITY_METRICS = [
     ("MMLU", "mmlu", "acc,none"),
     ("IFEval Prompt Strict", "ifeval", "prompt_level_strict_acc,none"),
     ("IFEval Inst Strict", "ifeval", "inst_level_strict_acc,none"),
-    ("IFEval Prompt Loose", "ifeval", "prompt_level_loose_acc,none"),
-    ("IFEval Inst Loose", "ifeval", "inst_level_loose_acc,none"),
 ]
 PERF_METRICS = [
     ("Model VRAM (MB)", "model_vram_mb"),
@@ -35,6 +33,7 @@ COLORS = {
     "INT8": "#f58518",
     "INT4": "#54a24b",
 }
+LEGEND_FONT_SIZE = 13
 
 
 def parse_args() -> argparse.Namespace:
@@ -138,8 +137,8 @@ def add_grouped_bars(
 
 
 def save_quality_chart(runs: list[dict], output_dir: Path) -> None:
-    fig, axes = plt.subplots(2, 3, figsize=(16, 9))
-    axes_flat = axes.flatten()
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5.5))
+    axes_flat = np.atleast_1d(axes).flatten()
 
     for index, (title, task, key) in enumerate(QUALITY_METRICS):
         labels, series = extract_quality_matrix(runs, task, key)
@@ -148,11 +147,18 @@ def save_quality_chart(runs: list[dict], output_dir: Path) -> None:
         ax.set_title(title)
         ax.set_ylim(bottom=0)
 
-    axes_flat[-1].axis("off")
     handles, labels = axes_flat[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=3, frameon=False)
-    fig.suptitle("Quality Benchmarks by Model and Precision", fontsize=16)
-    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.975),
+        ncol=3,
+        frameon=False,
+        fontsize=LEGEND_FONT_SIZE,
+    )
+    fig.suptitle("Quality Benchmarks by Model and Precision", fontsize=16, y=0.995)
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
     fig.savefig(output_dir / "quality_benchmarks.png", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
@@ -167,9 +173,17 @@ def save_performance_chart(runs: list[dict], output_dir: Path) -> None:
         ax.set_ylim(bottom=0)
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=3, frameon=False)
-    fig.suptitle("Performance Benchmarks by Model and Precision", fontsize=16)
-    fig.tight_layout(rect=(0, 0, 1, 0.9))
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.96),
+        ncol=3,
+        frameon=False,
+        fontsize=LEGEND_FONT_SIZE,
+    )
+    fig.suptitle("Performance Benchmarks by Model and Precision", fontsize=16, y=0.995)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
     fig.savefig(output_dir / "performance_benchmarks.png", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
@@ -221,9 +235,17 @@ def save_normalized_delta_chart(runs: list[dict], output_dir: Path) -> None:
         ax.set_axisbelow(True)
 
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=2, frameon=False)
-    fig.suptitle("Quantized Delta vs BF16", fontsize=16)
-    fig.tight_layout(rect=(0, 0, 1, 0.9))
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.96),
+        ncol=2,
+        frameon=False,
+        fontsize=LEGEND_FONT_SIZE,
+    )
+    fig.suptitle("Quantized Delta vs BF16", fontsize=16, y=0.995)
+    fig.tight_layout(rect=(0, 0, 1, 0.88))
     fig.savefig(output_dir / "quantization_deltas.png", dpi=200, bbox_inches="tight")
     plt.close(fig)
 
