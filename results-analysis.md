@@ -7,10 +7,9 @@ Older runs generated before the `2026-03-26` fix for the INT4 memory accounting/
 
 - `microsoft/Phi-4-mini-instruct` (`2026-03-26-23:25:55-results.json`)
 - `meta-llama/Llama-3.2-3B` (`2026-03-27-15:41:19-results.json`)
-- `TinyLlama/TinyLlama-1.1B-Chat-v1.0` (`2026-03-28-17:14:58-results.json`)
 - `google/gemma-3-4b-pt` (`2026-03-29-15:39:55-results.json`)
 
-All four runs were executed on CUDA and include both `ifeval` and `mmlu`.
+All three runs were executed on CUDA and include both `ifeval` and `mmlu`.
 
 ## Benchmarks Used
 
@@ -39,11 +38,11 @@ All four runs were executed on CUDA and include both `ifeval` and `mmlu`.
 
 `INT8` stayed very close to `BF16` overall.
 
-- `MMLU`: average delta `-0.0026`
-- `IFEval prompt strict`: average delta `+0.0046`
-- `IFEval inst strict`: average delta `+0.0006`
-- `IFEval prompt loose`: average delta `+0.0042`
-- `IFEval inst loose`: average delta `+0.0003`
+- `MMLU`: average delta `-0.0035`
+- `IFEval prompt strict`: average delta `+0.0074`
+- `IFEval inst strict`: average delta `+0.0024`
+- `IFEval prompt loose`: average delta `+0.0074`
+- `IFEval inst loose`: average delta `+0.0024`
 
 Interpretation:
 
@@ -55,17 +54,17 @@ Interpretation:
 
 `INT4` showed a clearer quality tradeoff.
 
-- `MMLU`: average delta `-0.0283`
-- `IFEval prompt strict`: average delta `-0.0300`
-- `IFEval inst strict`: average delta `-0.0279`
-- `IFEval prompt loose`: average delta `-0.0337`
-- `IFEval inst loose`: average delta `-0.0297`
+- `MMLU`: average delta `-0.0372`
+- `IFEval prompt strict`: average delta `-0.0400`
+- `IFEval inst strict`: average delta `-0.0412`
+- `IFEval prompt loose`: average delta `-0.0444`
+- `IFEval inst loose`: average delta `-0.0436`
 
 Interpretation:
 
 - `INT4` consistently degraded quality more than `INT8`.
 - The strongest quality regressions appeared on larger/stronger models such as `Phi-4-mini-instruct` and `Llama-3.2-3B`.
-- Tiny models were less consistent, but the aggregate trend still favored `BF16` and `INT8` over `INT4`.
+- The aggregate trend still favored `BF16` and `INT8` over `INT4`.
 
 ## Memory Impact
 
@@ -74,12 +73,12 @@ This is the clearest benefit of quantization in the retained runs.
 ### INT8 vs BF16
 
 - model VRAM reduction: `41.5%` to `43.8%`
-- average reduction: `42.6%`
+- average reduction: `42.4%`
 
 ### INT4 vs BF16
 
 - model VRAM reduction: `60.3%` to `63.1%`
-- average reduction: `61.6%`
+- average reduction: `61.2%`
 
 Interpretation:
 
@@ -92,13 +91,13 @@ Quantization improved memory efficiency, but not speed.
 
 ### INT8 vs BF16
 
-- average tokens/sec delta: `-70.2%`
-- average latency delta: `+246.1%`
+- average tokens/sec delta: `-68.2%`
+- average latency delta: `+224.4%`
 
 ### INT4 vs BF16
 
-- average tokens/sec delta: `-41.9%`
-- average latency delta: `+71.3%`
+- average tokens/sec delta: `-39.6%`
+- average latency delta: `+61.8%`
 
 Interpretation:
 
@@ -121,12 +120,6 @@ This does not mean 4-bit inference is inherently faster than 8-bit inference in 
 - `INT8` was nearly lossless on `MMLU` but regressed `IFEval` somewhat.
 - `INT4` degraded both `MMLU` and `IFEval` more noticeably.
 - Performance followed the same pattern seen elsewhere: `BF16` fastest, `INT8` slowest.
-
-### `TinyLlama/TinyLlama-1.1B-Chat-v1.0`
-
-- Quality changes were small and somewhat noisy across quantization levels.
-- Memory still improved substantially with quantization.
-- Despite the small model size, the quantized paths were still slower than `BF16`.
 
 ### `google/gemma-3-4b-pt`
 

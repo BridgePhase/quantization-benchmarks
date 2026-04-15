@@ -79,11 +79,11 @@ bash run_benchmarks.sh mps --skip-perf
 # Fast smoke test using only first 10 eval samples per task
 bash run_benchmarks.sh mps --skip-perf --tasks ifeval --batch-size 1 --limit 10
 
-# Local Mac smoke test with a small model/task sample
-./run_benchmarks.sh mps --tasks hellaswag --model "TinyLlama/TinyLlama-1.1B-Chat-v1.0" --batch-size 1 --limit 2
+# Local Mac smoke test with a small task sample
+./run_benchmarks.sh mps --tasks hellaswag --batch-size 1 --limit 2
 
-# CUDA example with multiple tasks on a small model
-./run_benchmarks.sh cuda --tasks ifeval,mmlu --model "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+# CUDA example with multiple tasks on the default model
+./run_benchmarks.sh cuda --tasks ifeval,mmlu
 ```
 
 On CUDA, this runs three configurations sequentially:
